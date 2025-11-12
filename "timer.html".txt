@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Таймер</title>
+<style>
+  :root{
+    --bg:#f4efe9;           /* фон под карточки из твоего референса */
+    --card:#ffffff;
+    --text:#222;
+    --muted:#7a7a7a;
+    --accent:#8d2a2a;       /* бордовый */
+    --radius:18px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial,sans-serif;
+    color:var(--text); display:grid; place-items:center;
+    padding:24px;
+  }
+  .wrap{
+    width:min(860px,100%);
+    background:var(--card); border-radius:var(--radius);
+    box-shadow:0 8px 30px rgba(0,0,0,.07);
+    padding:28px 24px;
+  }
+  h1{margin:0 0 6px; font-size:clamp(18px,3.5vw,28px)}
+  .sub{color:var(--muted); margin:0 0 20px; font-size:14px}
+  .timer{
+    display:flex; gap:12px; flex-wrap:wrap;
+    justify-content:center; margin:8px 0 18px;
+  }
+  .cell{
+    background:#fbfaf8; border:1px solid #eee;
+    border-radius:14px; padding:18px 16px; min-width:92px;
+    text-align:center;
+  }
+  .num{font-variant-numeric:tabular-nums; font-weight:700;
+       font-size:clamp(28px,6vw,42px); line-height:1}
+  .lbl{margin-top:6px; font-size:12px; color:#666}
+  .bar{
+    height:10px; background:#eee; border-radius:999px; overflow:hidden;
+    margin:10px 0 2px;
+  }
+  .prog{height:100%; width:0%; background:var(--accent); transition:width .2s linear}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between}
+  button,.link{
+    border:0; background:var(--accent); color:#fff; cursor:pointer;
+    border-radius:12px; padding:10px 14px; font-weight:600;
+  }
+  button.secondary{
+    background:#ece7e2; color:#333;
+  }
+  code{background:#f1ece7; padding:3px 6px; border-radius:6px}
+  .hidden{display:none}
+  .done{color:var(--accent); font-weight:700}
+  .err{color:#b30000; font-weight:600}
+  .muted{color:var(--muted)}
+  .footer{margin-top:10px; font-size:12px; color:#7a7a7a}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1 id="title">Таймер</h1>
+  <p class="sub" id="subtitle">Дай ссылку вида <code>?seconds=600&title=Перерыв</code> или <code>?to=2025-12-31T23:59:59+03:00</code></p>
+
+  <div class="timer" id="timer">
+    <div class="cell"><div class="num" id="d">0</div><div class="lbl">дней</div></div>
+    <div class="cell"><div class="num" id="h">00</div><div class="lbl">часов</div></div>
+    <div class="cell"><div class="num" id="m">00</div><div class="lbl">минут</div></div>
+    <div class="cell"><div class="num" id="s">00</div><div class="lbl">секунд</div></div>
+  </div>
+
+  <div class="bar" aria-hidden="true"><div class="prog" id="prog"></div></div>
+
+  <div class="row" style="margin-top:8px">
+    <div class="muted" id="deadlineInfo"></div>
+    <div style="display:flex;gap:8px">
+      <button id="copy">Скопировать ссылку</button>
+      <button class="secondary" id="newlink">Создать ссылку</button>
+      <button class="secondary hidden" id="restart">Запустить заново</button>
+    </div>
+  </div>
+
+  <div id="form" class="hidden" style="margin-top:12px">
+    <div class="row" style="gap:12px">
+      <label style="flex:2 1 280px">Название<br>
+        <input id="f_title" type="text" style="width:100%;padding:10px;border-radius:10px;border:1px solid #ddd" placeholder="Например: Перерыв 10 минут">
+      </label>
+      <label style="flex:1 1 220px">Минуты<br>
+        <input id="f_min" type="number" min="1" step="1" value="10" style="width:100%;padding:10px;border-radius:10px;border:1px solid #ddd">
+      </label>
+      <label style="flex:1 1 260px">Или дата/время (ISO)<br>
+        <input id="f_to" type="text" placeholder="2025-12-31T23:59:59+03:00" style="width:100%;padding:10px;border-radius:10px;border:1px solid #ddd">
+      </label>
+      <button id="make" style="align-self:flex-end">Сделать ссылку</button>
+    </div>
+    <div class="footer">Поддерживаются параметры: <code>title</code>, <code>seconds</code>, <code>to</code>.  
+      Пример: <code>?seconds=900&title=Кофе-брейк</code> или <code>?to=2025-07-01T12:00:00+03:00&title=Дедлайн</code>
+    </div>
+  </div>
+
+  <p id="status" class="sub" style="margin-top:12px"></p>
+</div>
+
+<script>
+(function(){
+  const qs = new URLSearchParams(location.search);
+  const dom = {
+    d: document.getElementById('d'),
+    h: document.getElementById('h'),
+    m: document.getElementById('m'),
+    s: document.getElementById('s'),
+    prog: document.getElementById('prog'),
+    copy: document.getElementById('copy'),
+    newlink: document.getElementById('newlink'),
+    restart: document.getElementById('restart'),
+    form: document.getElementById('form'),
+    make: document.getElementById('make'),
+    f_title: document.getElementById('f_title'),
+    f_min: document.getElementById('f_min'),
+    f_to: document.getElementById('f_to'),
+    status: document.getElementById('status'),
+    title: document.getElementById('title'),
+    subtitle: document.getElementById('subtitle'),
+    deadlineInfo: document.getElementById('deadlineInfo')
+  };
+
+  // utils
+  const pad = n => String(n).padStart(2,'0');
+  const clamp = (v,min,max) => Math.min(max, Math.max(min,v));
+
+  // parse input
+  const title = qs.get('title') ? decodeURIComponent(qs.get('title')) : 'Таймер';
+  dom.title.textContent = title;
+  if (qs.get('title')) dom.subtitle.textContent = '';
+
+  let end = null, totalMs = null;
+  const now = () => new Date().getTime();
+
+  if (qs.has('seconds')) {
+    const sec = Math.max(1, parseInt(qs.get('seconds'),10)||0);
+    totalMs = sec*1000;
+    end = now() + totalMs;
+    dom.deadlineInfo.textContent = `Длительность: ${sec} сек. Закончится: ${new Date(end).toLocaleString()}`;
+  } else if (qs.has('to')) {
+    const d = new Date(qs.get('to'));
+    if (!isNaN(d.getTime())) {
+      end = d.getTime();
+      totalMs = Math.max(1, end - now());
+      dom.deadlineInfo.textContent = `Дедлайн: ${d.toLocaleString()}`;
+    }
+  }
+
+  // if no params, show builder form
+  if (!end) {
+    dom.form.classList.remove('hidden');
+    dom.newlink.classList.add('hidden');
+    dom.copy.classList.add('hidden');
+    dom.subtitle.innerHTML = 'Укажите длительность в минутах или дату/время и получите ссылку.';
+  }
+
+  let start = end ? (end - totalMs) : null;
+  let tickId = null, finished = false;
+
+  function renderLeft(ms){
+    ms = Math.max(0, ms);
+    const s = Math.floor(ms/1000);
+    const days = Math.floor(s / 86400);
+    const hrs  = Math.floor((s % 86400) / 3600);
+    const mins = Math.floor((s % 3600) / 60);
+    const secs = s % 60;
+
+    dom.d.textContent = days;
+    dom.h.textContent = pad(hrs);
+    dom.m.textContent = pad(mins);
+    dom.s.textContent = pad(secs);
+
+    if (totalMs){
+      const done = 1 - (ms/totalMs);
+      dom.prog.style.width = (clamp(done,0,1)*100).toFixed(2) + '%';
+    }
+  }
+
+  function finish(){
+    finished = true;
+    renderLeft(0);
+    dom.status.innerHTML = '<span class="done">Время вышло</span>';
+    dom.restart.classList.remove('hidden');
+    // короткий звуковой сигнал (без внешних файлов)
+    try{
+      const ctx = new (window.AudioContext||window.webkitAudioContext)();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type='sine'; o.frequency.value = 880; o.connect(g); g.connect(ctx.destination);
+      g.gain.setValueAtTime(.001, ctx.currentTime);
+      g.gain.exponentialRampToValueAtTime(.2, ctx.currentTime+.02);
+      o.start(); o.stop(ctx.currentTime+.25);
+    }catch(e){}
+  }
+
+  function tick(){
+    const left = end - now();
+    if (left <= 0){ cancelAnimationFrame(tickId); finish(); return; }
+    renderLeft(left);
+    tickId = requestAnimationFrame(tick);
+  }
+
+  if (end){
+    renderLeft(end - now());
+    tick();
+  }
+
+  // UI actions
+  dom.copy.addEventListener('click', async ()=>{
+    try{
+      await navigator.clipboard.writeText(location.href);
+      dom.status.textContent = 'Ссылка скопирована';
+    }catch(e){
+      dom.status.innerHTML = '<span class="err">Не удалось скопировать. Скопируйте из адресной строки.</span>';
+    }
+  });
+
+  dom.newlink.addEventListener('click', ()=>{
+    dom.form.classList.toggle('hidden');
+  });
+
+  dom.make.addEventListener('click', ()=>{
+    const t = dom.f_title.value.trim() || 'Таймер';
+    const to = dom.f_to.value.trim();
+    const mins = parseInt(dom.f_min.value,10);
+
+    let url = new URL(location.href.split('?')[0]);
+    url.searchParams.set('title', t);
+
+    if (to){
+      url.searchParams.set('to', to);
+    } else if (!isNaN(mins) && mins>0){
+      url.searchParams.set('seconds', String(mins*60));
+    } else {
+      dom.status.innerHTML = '<span class="err">Укажите минуты или корректную дату.</span>';
+      return;
+    }
+    history.replaceState(null,'',url.toString());
+    location.reload();
+  });
+
+  dom.restart.addEventListener('click', ()=>{
+    if (!totalMs){ location.reload(); return; }
+    start = now();
+    end = start + totalMs;
+    finished = false;
+    dom.status.textContent = '';
+    dom.restart.classList.add('hidden');
+    tick();
+  });
+
+})();
+</script>
+</body>
+</html>
